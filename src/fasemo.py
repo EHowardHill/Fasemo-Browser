@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QFrame
 )
-from PyQt6.QtCore import Qt, QUrl, QSize, QMimeData, QPoint
+from PyQt6.QtCore import Qt, QUrl, QSize, QMimeData, QPoint, QEvent
 from PyQt6.QtGui import QPixmap, QPainter, QIcon, QDrag, QFontDatabase, QFont
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from os import path
@@ -40,6 +40,19 @@ QPushButton {
     min-height: 32px;
     max-width: 32px;
     max-height: 32px;
+    border-radius: 0;
+}
+
+QToolButton {
+    border-radius: 0;
+}
+
+QToolButton:hover {
+    background-color: rgba(0, 157, 255, 0.5);
+}
+
+QToolButton:pressed {
+    background-color: rgb(0, 157, 255);
 }
 
 QPushButton:hover {
@@ -58,7 +71,7 @@ QScrollBar:vertical, QScrollBar:horizontal {
 QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
     background: rgb(0, 157, 255);
     border: none;
-    border-radius: 4px;
+    border-radius: 0px;
 }
 
 QScrollBar::add-line, QScrollBar::sub-line {
@@ -239,18 +252,13 @@ class Fasemo(QMainWindow):
 
         self.container = QFrame()
         self.container.setLayout(self.h_layout)
-
-        # Accept drops on the container
-        self.container.setAcceptDrops(True)
+        self.container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOn
-        )
-        self.scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
+        # No vertical scrollbar
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.scroll_area.setWidget(self.container)
         self.main_layout.addWidget(self.scroll_area)
 
@@ -279,7 +287,6 @@ class Fasemo(QMainWindow):
 
         self.setWindowTitle("Fasemo")
 
-        # Add a wallpaper in place of spacer
         self.add_browser("https://www.google.com")
         self.showMaximized()
 
@@ -295,8 +302,20 @@ class Fasemo(QMainWindow):
 
         self.dragged_browser_id = None
 
-    def closeEvent(self, event):
-        super().closeEvent(event)
+        # Ensure container's height matches the scroll_area's viewport height
+        self.update_container_height()
+        # Update height whenever the window is resized
+        self.scroll_area.viewport().installEventFilter(self)
+
+    def eventFilter(self, source, event):
+        if source == self.scroll_area.viewport() and event.type() == QEvent.Type.Resize:
+            self.update_container_height()
+        return super().eventFilter(source, event)
+
+    def update_container_height(self):
+        # Match the container height to the scroll area viewport height
+        viewport_height = self.scroll_area.viewport().height()
+        self.container.setFixedHeight(viewport_height)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -307,6 +326,10 @@ class Fasemo(QMainWindow):
                 Qt.TransformationMode.SmoothTransformation
             )
             self.wallpaper_label.setPixmap(scaled_pixmap)
+
+        # Also ensure container matches new viewport height on window resize
+        self.update_container_height()
+
 
     def add_browser_button(self, bc):
         btn = QToolButton()
