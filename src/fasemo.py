@@ -1,5 +1,4 @@
 import sys
-import vlc
 from PyQt6 import sip
 from PyQt6.QtWidgets import (
     QApplication,
@@ -21,7 +20,6 @@ from PyQt6.QtCore import Qt, QUrl, QSize, QMimeData, QPoint
 from PyQt6.QtGui import QPixmap, QPainter, QIcon, QDrag
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from os import path
-
 
 class DragLabel(QLabel):
     def __init__(self, parent=None):
