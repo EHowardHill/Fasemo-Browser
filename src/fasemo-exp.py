@@ -12,28 +12,26 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QLineEdit,
     QPushButton,
+    QSpacerItem,
     QLabel,
     QFrame
 )
 from PyQt6.QtCore import Qt, QUrl, QSize, QMimeData, QPoint
 from PyQt6.QtGui import QPixmap, QPainter, QIcon, QDrag, QFontDatabase, QFont
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6.QtMultimediaWidgets import QVideoWidget
 from os import path
 
 styles = stylesheet = """
 QWidget {
-    background: black;
+    background: transparent;
     color: white;
     font-family: "Helvetica";
-    font-weight: bold;
-}
-
-QLabel {
-    background: black;
 }
 
 QPushButton {
-    background-color: black;
+    background-color: transparent;
     color: white;
     border: none;
     min-width: 32px;
@@ -51,7 +49,7 @@ QPushButton:pressed {
 }
 
 QScrollBar:vertical, QScrollBar:horizontal {
-    background: black;
+    background: transparent;
     border: none;
 }
 
@@ -62,12 +60,12 @@ QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
 }
 
 QScrollBar::add-line, QScrollBar::sub-line {
-    background: black;
+    background: transparent;
     border: none;
 }
 
 QScrollBar::add-page, QScrollBar::sub-page {
-    background: black;
+    background: transparent;
 }
 """
 
@@ -85,11 +83,9 @@ class DragLabel(QLabel):
             mime_data.setData("application/x-fasemo-browser", str(id(self.browser_container)).encode('utf-8'))
             drag.setMimeData(mime_data)
 
-            # Use the label pixmap as the drag pixmap
-            if not self.pixmap().isNull():
+            if self.pixmap() and not self.pixmap().isNull():
                 drag.setPixmap(self.pixmap())
             else:
-                # fallback: blank pixmap
                 drag.setPixmap(QPixmap(20, 20))
 
             drag.exec(Qt.DropAction.MoveAction)
@@ -109,12 +105,11 @@ class BrowserContainer(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
 
-        # Top bar with Close button and URL edit
         top_bar = QHBoxLayout()
 
         self.drag_label = DragLabel()
         self.drag_label.setPixmap(QPixmap(path.join("resources", "drag.png")))
-        self.drag_label.browser_container = self  # Reference back to this container
+        self.drag_label.browser_container = self
         top_bar.addWidget(self.drag_label)
 
         self.url_edit = QLineEdit(url)
@@ -190,7 +185,6 @@ class SplitterHandle(QWidget):
         super().__init__(parent)
         self.left_widget = left_widget
         self.container = container
-
         self.setFixedWidth(20)
         self.setCursor(Qt.CursorShape.SplitHCursor)
         self.dragging = False
@@ -228,19 +222,35 @@ class Fasemo(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        central_widget = QWidget()
-        central_widget.setObjectName("centralWidget")
-        self.setCentralWidget(central_widget)
-        self.main_layout = QVBoxLayout()
-        central_widget.setLayout(self.main_layout)
+        # Set up video background
+        self.videoWidget = QVideoWidget()
+        self.videoWidget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        self.setCentralWidget(self.videoWidget)
 
-        self.h_layout = QHBoxLayout()
-        self.h_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.player = QMediaPlayer()
+        self.audioOutput = QAudioOutput()
+        self.player.setAudioOutput(self.audioOutput)
+        video_url = QUrl.fromLocalFile(path.join("resources", "wallpaper.mp4"))
+        self.player.setSource(video_url)
+        self.player.setLoops(QMediaPlayer.Loops.Infinite)
+        self.player.setVideoOutput(self.videoWidget)
+        # Ignore aspect ratio to fill entire background
+        self.videoWidget.setAspectRatioMode(Qt.AspectRatioMode.IgnoreAspectRatio)
+        self.player.play()
 
-        self.container = QFrame()
-        self.container.setLayout(self.h_layout)
+        # Overlay widget for the actual UI on top of the video
+        self.overlay = QWidget(self.videoWidget)
+        self.overlay.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.overlay.setStyleSheet("background: transparent;")
+        overlay_layout = QVBoxLayout(self.overlay)
+        overlay_layout.setContentsMargins(0, 0, 0, 0)
+        overlay_layout.setSpacing(0)
 
-        # Accept drops on the container
+        # The main container with horizontal layout for browsers
+        self.container = QWidget()
+        self.container.setLayout(QHBoxLayout())
+        self.container.layout().setContentsMargins(0, 0, 0, 0)
+        self.container.layout().setSpacing(0)
         self.container.setAcceptDrops(True)
 
         self.scroll_area = QScrollArea()
@@ -252,40 +262,31 @@ class Fasemo(QMainWindow):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         self.scroll_area.setWidget(self.container)
-        self.main_layout.addWidget(self.scroll_area)
+        overlay_layout.addWidget(self.scroll_area)
 
         self.browser_containers = []
         self.handles = []
         self.browser_toolbar_actions = []
-
-        screen = QApplication.primaryScreen()
-        self.screen_width = screen.availableGeometry().width()
-
-        self.wallpaper_label = QLabel()
-        self.wallpaper_label.setFixedWidth(QApplication.primaryScreen().geometry().width())
-        self.wallpaper_label.setScaledContents(False)
-        self.wallpaper_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.wallpaper_pixmap = QPixmap(path.join("resources", "wallpaper2.jpg"))
+        self.extra_spacer = None
 
         self.toolbar = QToolBar("Toolbar")
-        self.toolbar.setIconSize(QSize(48, 48))
         self.toolbar.setOrientation(Qt.Orientation.Horizontal)
+        self.toolbar.setStyleSheet("background: transparent; border: none;")
         new_button = QToolButton()
         new_icon = QIcon(path.join("resources", "btn-add.png"))
         new_button.setIcon(new_icon)
         new_button.clicked.connect(self.on_new_button_clicked)
         self.toolbar.addWidget(new_button)
-        self.addToolBar(Qt.ToolBarArea.BottomToolBarArea, self.toolbar)
+
+        # Insert the toolbar at the bottom inside the overlay
+        overlay_layout.addWidget(self.toolbar)
 
         self.setWindowTitle("Fasemo")
 
-        # Add a wallpaper in place of spacer
+        self.add_spacer()
         self.add_browser("https://www.google.com")
         self.showMaximized()
 
-        self.h_layout.addWidget(self.wallpaper_label)
-
-        # Insertion line
         self.insertion_line = QFrame(self.container)
         self.insertion_line.setFrameShape(QFrame.Shape.VLine)
         self.insertion_line.setFrameShadow(QFrame.Shadow.Plain)
@@ -295,18 +296,31 @@ class Fasemo(QMainWindow):
 
         self.dragged_browser_id = None
 
-    def closeEvent(self, event):
-        super().closeEvent(event)
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if self.wallpaper_label is not None and self.wallpaper_pixmap is not None:
-            scaled_pixmap = self.wallpaper_pixmap.scaled(
-                self.wallpaper_label.size(),
-                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                Qt.TransformationMode.SmoothTransformation
-            )
-            self.wallpaper_label.setPixmap(scaled_pixmap)
+        # Make overlay fill the entire videoWidget
+        self.overlay.setGeometry(self.videoWidget.rect())
+
+    def add_spacer(self):
+        self.remove_existing_spacer()
+        screen = QApplication.primaryScreen()
+        screen_width = screen.availableGeometry().width()
+        self.extra_spacer = QSpacerItem(
+            screen_width, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
+        self.container.layout().addItem(self.extra_spacer)
+
+    def remove_existing_spacer(self):
+        if self.extra_spacer is None:
+            return
+
+        if self.container.layout() is not None and not sip.isdeleted(self.container.layout()):
+            for i in range(self.container.layout().count()):
+                item = self.container.layout().itemAt(i)
+                if item is self.extra_spacer:
+                    self.container.layout().removeItem(item)
+                    self.extra_spacer = None
+                    break
 
     def add_browser_button(self, bc):
         btn = QToolButton()
@@ -322,23 +336,22 @@ class Fasemo(QMainWindow):
         self.updateButtonIcon(btn, bc.browser)
 
     def add_browser(self, url: str):
+        self.remove_existing_spacer()
+
         bc = BrowserContainer(url)
         bc.close_requested = self.close_browser
 
-        self.h_layout.addWidget(bc)
+        self.container.layout().addWidget(bc)
         self.browser_containers.append(bc)
 
         handle = SplitterHandle(bc, self.container)
-        self.h_layout.addWidget(handle)
+        self.container.layout().addWidget(handle)
         self.handles.append(handle)
 
+        self.add_spacer()
         self.container.adjustSize()
 
-        if hasattr(self, "toolbar"):
-            self.add_browser_button(bc)
-
-        self.h_layout.removeWidget(self.wallpaper_label)
-        self.h_layout.addWidget(self.wallpaper_label)
+        self.add_browser_button(bc)
 
     def updateButtonIcon(self, button, browser):
         icon = browser.icon()
@@ -354,30 +367,30 @@ class Fasemo(QMainWindow):
         if bc not in self.browser_containers:
             return
         index = self.browser_containers.index(bc)
+        self.remove_existing_spacer()
 
-        item_to_remove = self.find_layout_item(self.h_layout, bc)
+        item_to_remove = self.find_layout_item(self.container.layout(), bc)
         if item_to_remove is not None:
-            self.h_layout.removeItem(item_to_remove)
-        self.h_layout.removeWidget(bc)
+            self.container.layout().removeItem(item_to_remove)
+        self.container.layout().removeWidget(bc)
         bc.setParent(None)
         self.browser_containers.remove(bc)
 
-        # Remove corresponding handle
         if index < len(self.handles):
             handle = self.handles[index]
-            handle_item = self.find_layout_item(self.h_layout, handle)
+            handle_item = self.find_layout_item(self.container.layout(), handle)
             if handle_item is not None:
-                self.h_layout.removeItem(handle_item)
-            self.h_layout.removeWidget(handle)
+                self.container.layout().removeItem(handle_item)
+            self.container.layout().removeWidget(handle)
             handle.setParent(None)
             self.handles.pop(index)
 
-        # Remove corresponding toolbar button
         if index < len(self.browser_toolbar_actions):
             btn, action = self.browser_toolbar_actions[index]
             self.toolbar.removeAction(action)
             self.browser_toolbar_actions.pop(index)
 
+        self.add_spacer()
         self.container.adjustSize()
 
     def find_layout_item(self, layout, widget):
@@ -402,9 +415,7 @@ class Fasemo(QMainWindow):
         desired_scroll_value = min(desired_scroll_value, h_scrollbar.maximum())
         h_scrollbar.setValue(int(desired_scroll_value))
 
-    # -------- Drag and Drop Handling --------
     def dragEnterEvent(self, event):
-        # Only accept if we have our custom MIME
         if event.mimeData().hasFormat("application/x-fasemo-browser"):
             event.acceptProposedAction()
 
@@ -414,7 +425,6 @@ class Fasemo(QMainWindow):
             return
 
         event.acceptProposedAction()
-
         pos = event.position().toPoint()
         self.show_insertion_indicator(pos)
 
@@ -426,7 +436,6 @@ class Fasemo(QMainWindow):
         event.acceptProposedAction()
         dropped_id = event.mimeData().data("application/x-fasemo-browser").data().decode('utf-8')
 
-        # Find the browser container by its id
         dragged_bc = None
         for bc in self.browser_containers:
             if str(id(bc)) == dropped_id:
@@ -439,27 +448,20 @@ class Fasemo(QMainWindow):
         pos = event.position().toPoint()
         insert_index = self.calculate_insert_index(pos)
 
-        # Remove from old position
         old_index = self.browser_containers.index(dragged_bc)
+        self.remove_existing_spacer()
         self.remove_browser_from_layout(old_index)
 
         if old_index < insert_index:
             insert_index -= 1
 
-        # Re-insert at new position
         self.insert_browser_at_index(dragged_bc, insert_index)
-
+        self.add_spacer()
         self.container.adjustSize()
-
-        # Hide insertion line
         self.insertion_line.hide()
-
-        self.h_layout.removeWidget(self.wallpaper_label)
-        self.h_layout.addWidget(self.wallpaper_label)
 
     def show_insertion_indicator(self, pos: QPoint):
         insert_index = self.calculate_insert_index(pos)
-
         self.container.adjustSize()
         self.container.layout().update()
 
@@ -492,29 +494,28 @@ class Fasemo(QMainWindow):
         bc = self.browser_containers.pop(index)
         handle = self.handles.pop(index)
 
-        item_to_remove = self.find_layout_item(self.h_layout, bc)
+        item_to_remove = self.find_layout_item(self.container.layout(), bc)
         if item_to_remove:
-            self.h_layout.removeItem(item_to_remove)
-        self.h_layout.removeWidget(bc)
+            self.container.layout().removeItem(item_to_remove)
+        self.container.layout().removeWidget(bc)
         bc.setParent(None)
 
-        handle_item = self.find_layout_item(self.h_layout, handle)
+        handle_item = self.find_layout_item(self.container.layout(), handle)
         if handle_item:
-            self.h_layout.removeItem(handle_item)
-        self.h_layout.removeWidget(handle)
+            self.container.layout().removeItem(handle_item)
+        self.container.layout().removeWidget(handle)
         handle.setParent(None)
 
-        # Also update toolbar:
         btn, action = self.browser_toolbar_actions.pop(index)
         self.toolbar.removeAction(action)
 
     def insert_browser_at_index(self, bc, index):
         browser_pos = self.calculate_layout_position_for_browser(index)
-        self.h_layout.insertWidget(browser_pos, bc)
+        self.container.layout().insertWidget(browser_pos, bc)
         self.browser_containers.insert(index, bc)
 
         handle = SplitterHandle(bc, self.container)
-        self.h_layout.insertWidget(browser_pos + 1, handle)
+        self.container.layout().insertWidget(browser_pos + 1, handle)
         self.handles.insert(index, handle)
 
         self.add_browser_button(bc)
@@ -526,11 +527,8 @@ class Fasemo(QMainWindow):
         self.insertion_line.hide()
         event.accept()
 
-
 def main():
     app = QApplication(sys.argv)
-
-    # Load the custom font
     font_id = QFontDatabase.addApplicationFont(path.join("resources", "Helvetica-Bold.ttf"))
     if font_id != -1:
         families = QFontDatabase.applicationFontFamilies(font_id)
@@ -542,7 +540,6 @@ def main():
     window = Fasemo()
     window.show()
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()
