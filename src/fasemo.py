@@ -240,6 +240,7 @@ class SplitterHandle(QWidget):
 class Fasemo(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.setWindowIcon(QIcon(path.join("resources", "helmet.png")))
 
         central_widget = QWidget()
         central_widget.setObjectName("centralWidget")

