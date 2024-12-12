@@ -8,6 +8,12 @@ Download the Windows binary at my website:
 
 Unpack the ZIP, run Fasemo.exe, and enjoy.
 
+# Screenshots
+
+![Screenshot](graphics/fasemo4.png)
+![Screenshot](graphics/fasemo5.png)
+![Screenshot](graphics/fasemo6.png)
+
 # Build
 To build this yourself, make sure you install the packages from `requirements.txt`.
 
