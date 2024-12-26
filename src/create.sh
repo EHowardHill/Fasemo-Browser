@@ -1,0 +1,1 @@
+pyinstaller --clean --onefile --noconsole --icon=app_icon.ico fasemo.py
